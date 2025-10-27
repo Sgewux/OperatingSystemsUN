@@ -1,6 +1,69 @@
 #include "utils.h"
 
 // --------------------------------------------
+// Agregar una canción al CSV y actualizar el índice hash
+// --------------------------------------------
+int perform_add_song_server(Song s) {
+    FILE *csv = fopen("song_lyrics.csv", "a+");
+    if (!csv) {
+        perror("Error abriendo song_lyrics.csv para agregar");
+        return 0;
+    }
+
+    // Guardar posición de inicio (offset donde se escribe la canción)
+    long data_offset = ftell(csv);
+
+    // Escribir la nueva línea (ajusta el formato al de tu CSV original)
+    fprintf(csv, "%s,%s,%d,%d,%s,%s\n",
+            s.titulo, s.artist, s.year, s.views, s.tag, s.language);
+    fflush(csv);
+    fclose(csv);
+
+    // Actualizar el índice hash
+    FILE *f_index = fopen("hash_index.bin", "rb+");
+    FILE *f_nodes = fopen("index_nodes.bin", "ab+");
+    if (!f_index || !f_nodes) {
+        perror("Error abriendo archivos de índice");
+        if (f_index) fclose(f_index);
+        if (f_nodes) fclose(f_nodes);
+        return 0;
+    }
+
+    // Calcular hash del título
+    unsigned long hash = djb2_hash(s.titulo) % TABLE_SIZE;
+    long bucket_offset = hash * sizeof(long);
+    long current_head;
+
+    // Leer el head actual del bucket
+    fseek(f_index, bucket_offset, SEEK_SET);
+    if (fread(&current_head, sizeof(long), 1, f_index) != 1)
+        current_head = -1;
+
+    // Crear nuevo nodo
+    IndexNode new_node;
+    memset(&new_node, 0, sizeof(IndexNode));
+    strncpy(new_node.key, s.titulo, MAX_TITLE_SIZE);
+    new_node.data_offset = data_offset;
+    new_node.next_offset = current_head;
+
+    // Escribir el nodo al final del archivo
+    fseek(f_nodes, 0, SEEK_END);
+    long new_node_offset = ftell(f_nodes);
+    fwrite(&new_node, sizeof(IndexNode), 1, f_nodes);
+    fflush(f_nodes);
+
+    // Actualizar el head del bucket
+    fseek(f_index, bucket_offset, SEEK_SET);
+    fwrite(&new_node_offset, sizeof(long), 1, f_index);
+    fflush(f_index);
+
+    fclose(f_index);
+    fclose(f_nodes);
+
+    return 1; // éxito
+}
+
+// --------------------------------------------
 // Realiza la búsqueda según los criterios recibidos
 // --------------------------------------------
 void search(SearchCriteria criteria, Song *results, int *out_found) {
@@ -105,7 +168,7 @@ int main() {
             perror("Error allocating memory");
             return 1;
         }
-        int found;
+        int found = 0;
 
         // Esperar solicitud del cliente
         int rfd = open(FIFO_C2S, O_RDONLY);
@@ -114,56 +177,90 @@ int main() {
             exit(EXIT_FAILURE);
         }
 
-        SearchCriteria criteria;
-        if (read(rfd, &criteria, sizeof(SearchCriteria)) == -1) {
+        // ahora se lee un RequestMessage en lugar de solo SearchCriteria
+        RequestMessage req;
+        if (read(rfd, &req, sizeof(RequestMessage)) == -1) {
             perror("Error reading FIFO_C2S");
             close(rfd);
-            exit(EXIT_FAILURE);
+            free(results);
+            continue;
         }
         close(rfd);
 
-        // Ejecutar búsqueda
-        search(criteria, results, &found);
+        // Solo procesamos si la acción es de búsqueda
+        if (req.action == ACTION_SEARCH) {
+            // Ejecutar búsqueda (misma lógica que antes)
+            search(req.data.search, results, &found);
 
-        // Responder al cliente
-        int wfd = open(FIFO_S2C, O_WRONLY);
-        if (wfd == -1) {
-            perror("Error opening FIFO_S2C");
-            exit(EXIT_FAILURE);
-        }
-
-        if (write(wfd, &found, sizeof(int)) == -1) {
-            perror("Error writing FIFO_S2C");
-            close(wfd);
-            exit(EXIT_FAILURE);
-        }
-
-        if (found == 0) {
-            printf("========================================\n");
-            printf("  No se encontraron coincidencias.\n");
-            printf("========================================\n");
-            close(wfd);
-        } else {
-            printf("========================================\n");
-            printf("  %d canciones encontradas.\n", found);
-            printf("========================================\n");
-            for (int i = 0; i < found; i++) {
-                Song *s = &results[i];
-
-                if (write(wfd, s, sizeof(Song)) == -1) {
-                    perror("Error writing FIFO_S2C");
-                    close(wfd);
-                    exit(EXIT_FAILURE);
-                }
-
-                // Log para ver resultados en consola del servidor
-                printf("[%d] %s - %s (%d) | Views: %d\n",
-                       i + 1, s->titulo, s->artist, s->year, s->views);
+            // Responder al cliente
+            int wfd = open(FIFO_S2C, O_WRONLY);
+            if (wfd == -1) {
+                perror("Error opening FIFO_S2C");
+                free(results);
+                exit(EXIT_FAILURE);
             }
-            close(wfd);
+
+            if (write(wfd, &found, sizeof(int)) == -1) {
+                perror("Error writing FIFO_S2C");
+                close(wfd);
+                free(results);
+                exit(EXIT_FAILURE);
+            }
+
+            if (found == 0) {
+                printf("========================================\n");
+                printf("  No se encontraron coincidencias.\n");
+                printf("========================================\n");
+                close(wfd);
+            } else {
+                printf("========================================\n");
+                printf("  %d canciones encontradas.\n", found);
+                printf("========================================\n");
+                for (int i = 0; i < found; i++) {
+                    Song *s = &results[i];
+
+                    if (write(wfd, s, sizeof(Song)) == -1) {
+                        perror("Error writing FIFO_S2C");
+                        close(wfd);
+                        free(results);
+                        exit(EXIT_FAILURE);
+                    }
+
+                    // Log para ver resultados en consola del servidor
+                    printf("[%d] %s - %s (%d) | Views: %d\n",
+                           i + 1, s->titulo, s->artist, s->year, s->views);
+                }
+                close(wfd);
+            }
         }
+
+        else if (req.action == ACTION_ADD) {
+            printf(" Solicitud de agregar canción recibida: %s - %s\n",
+                   req.data.song.titulo, req.data.song.artist);
+        
+            int ack = perform_add_song_server(req.data.song);
+        
+            // Enviar confirmación al cliente
+            int wfd = open(FIFO_S2C, O_WRONLY);
+            if (wfd == -1) {
+                perror("Error abriendo FIFO_S2C");
+            } else {
+                if (write(wfd, &ack, sizeof(int)) == -1) {
+                    perror("Error enviando confirmación al cliente");
+                }
+                close(wfd);
+            }
+        
+            if (ack)
+                printf("Canción agregada correctamente al CSV y al índice.\n");
+            else
+                printf("Error al agregar la canción.\n");
+        }
+
+
         free(results);
     }
 
     return 0;
 }
+
