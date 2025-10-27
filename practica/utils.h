@@ -24,7 +24,7 @@
 #define MAX_FEATURES_SIZE 128
 #define MAX_LYRICS_SIZE 512
 #define MAX_LANG_SIZE 16
-#define MAX_RESULTS 128   
+#define MAX_RESULTS 128
 
 // ---------------------------
 // 🔹 ESTRUCTURAS DE DATOS
@@ -57,6 +57,23 @@ typedef struct {
     long data_offset;           // posición del registro en archivo
     long next_offset;           // colisión (0 si no hay)
 } IndexNode;
+
+// ---------------------------
+// 🔹 COMUNICACIÓN CLIENTE-SERVIDOR
+// ---------------------------
+
+typedef enum {
+    ACTION_SEARCH,  // 0 = buscar canción
+    ACTION_ADD      // 1 = agregar canción
+} ActionType;
+
+typedef struct {
+    ActionType action; // tipo de acción (buscar o agregar)
+    union {
+        SearchCriteria search; // usado cuando action = ACTION_SEARCH
+        Song song;             // usado cuando action = ACTION_ADD
+    } data;
+} RequestMessage;
 
 // ---------------------------
 // 🔹 FUNCIONES AUXILIARES
