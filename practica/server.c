@@ -4,22 +4,30 @@
 // Agregar una canción al CSV y actualizar el índice hash
 // --------------------------------------------
 int perform_add_song_server(Song s) {
-    FILE *csv = fopen("song_lyrics.csv", "a+");
+    // Abrir CSV para lectura/escritura (crear si no existe)
+    FILE *csv = fopen("song_lyrics.csv", "r+");
+    if (!csv) csv = fopen("song_lyrics.csv", "w+");
     if (!csv) {
         perror("Error abriendo song_lyrics.csv para agregar");
         return 0;
     }
 
-    // Guardar posición de inicio (offset donde se escribe la canción)
+    // Mover el puntero al final manualmente
+    fseek(csv, 0, SEEK_END);
+
+    // Guardar la posición exacta donde inicia la nueva línea
     long data_offset = ftell(csv);
 
-    // Escribir la nueva línea (ajusta el formato al de tu CSV original)
+    // Escribir la canción en formato CSV (ajusta si tu formato varía)
     fprintf(csv, "%s,%s,%d,%d,%s,%s\n",
             s.titulo, s.artist, s.year, s.views, s.tag, s.language);
+
     fflush(csv);
     fclose(csv);
 
-    // Actualizar el índice hash
+    // -------------------------
+    // Actualizar índice hash
+    // -------------------------
     FILE *f_index = fopen("hash_index.bin", "rb+");
     FILE *f_nodes = fopen("index_nodes.bin", "ab+");
     if (!f_index || !f_nodes) {
@@ -32,21 +40,20 @@ int perform_add_song_server(Song s) {
     // Calcular hash del título
     unsigned long hash = djb2_hash(s.titulo) % TABLE_SIZE;
     long bucket_offset = hash * sizeof(long);
-    long current_head;
+    long current_head = -1;
 
     // Leer el head actual del bucket
     fseek(f_index, bucket_offset, SEEK_SET);
-    if (fread(&current_head, sizeof(long), 1, f_index) != 1)
-        current_head = -1;
+    fread(&current_head, sizeof(long), 1, f_index);
 
-    // Crear nuevo nodo
+    // Crear el nuevo nodo del índice
     IndexNode new_node;
     memset(&new_node, 0, sizeof(IndexNode));
     strncpy(new_node.key, s.titulo, MAX_TITLE_SIZE);
     new_node.data_offset = data_offset;
     new_node.next_offset = current_head;
 
-    // Escribir el nodo al final del archivo
+    // Escribir el nodo al final del archivo de nodos
     fseek(f_nodes, 0, SEEK_END);
     long new_node_offset = ftell(f_nodes);
     fwrite(&new_node, sizeof(IndexNode), 1, f_nodes);
@@ -60,8 +67,9 @@ int perform_add_song_server(Song s) {
     fclose(f_index);
     fclose(f_nodes);
 
-    return 1; // éxito
+    return 1; // Éxito
 }
+
 
 // --------------------------------------------
 // Realiza la búsqueda según los criterios recibidos
