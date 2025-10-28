@@ -7,11 +7,14 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <fcntl.h>
 #include <unistd.h>
 
-#define FIFO_C2S "/tmp/fifo_c2s"  // Cliente → Servidor
-#define FIFO_S2C "/tmp/fifo_s2c"  // Servidor → Cliente
+#define SERVER_PORT 8080          // Puerto del servidor
+#define SERVER_IP "127.0.0.1"     // IP del servidor (localhost)
 
 // Configuración de tabla hash y buffers
 #define TABLE_SIZE 20000003       // Número primo grande
