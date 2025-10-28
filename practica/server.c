@@ -1,4 +1,8 @@
 #include "utils.h"
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
 
 // --------------------------------------------
 // Agregar una canción al CSV y actualizar el índice hash
@@ -166,109 +170,93 @@ int main() {
     printf("      MUSIC SEARCH SERVER ACTIVE\n");
     printf("========================================\n");
 
-    // Crear FIFOs si no existen
-    mkfifo(FIFO_C2S, 0666);
-    mkfifo(FIFO_S2C, 0666);
+    int server, client;
+    struct sockaddr_in addr;
+
+    server = socket(AF_INET, SOCK_STREAM, 0);
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(8080);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    bind(server, (struct sockaddr*)&addr, sizeof(addr));
+    listen(server, 1);
+
+    printf("Esperando conexión...\n");
+    socklen_t addrlen = sizeof(addr);
+    client = accept(server, (struct sockaddr*)&addr, &addrlen);
+    printf("Cliente conectado.\n");
 
     while (1) {
         Song *results = malloc(MAX_RESULTS * sizeof(Song));
+
         if (!results) {
             perror("Error allocating memory");
             return 1;
         }
+
         int found = 0;
-
-        // Esperar solicitud del cliente
-        int rfd = open(FIFO_C2S, O_RDONLY);
-        if (rfd == -1) {
-            perror("Error opening FIFO_C2S");
-            exit(EXIT_FAILURE);
-        }
-
-        // ahora se lee un RequestMessage en lugar de solo SearchCriteria
         RequestMessage req;
-        if (read(rfd, &req, sizeof(RequestMessage)) == -1) {
-            perror("Error reading FIFO_C2S");
-            close(rfd);
-            free(results);
-            continue;
-        }
-        close(rfd);
 
-        // Solo procesamos si la acción es de búsqueda
+        int bytes = recv(client, &req, sizeof(req), 0);
+
+        if (bytes <= 0) { // cliente cerró la conexión
+            printf("Cliente desconectado.\n");
+            free(results);
+            break;
+        }
+
+        // --- Acción de búsqueda ---
         if (req.action == ACTION_SEARCH) {
-            // Ejecutar búsqueda (misma lógica que antes)
             search(req.data.search, results, &found);
 
-            // Responder al cliente
-            int wfd = open(FIFO_S2C, O_WRONLY);
-            if (wfd == -1) {
-                perror("Error opening FIFO_S2C");
-                free(results);
-                exit(EXIT_FAILURE);
-            }
-
-            if (write(wfd, &found, sizeof(int)) == -1) {
-                perror("Error writing FIFO_S2C");
-                close(wfd);
-                free(results);
-                exit(EXIT_FAILURE);
-            }
+            // Enviar cuántos resultados se encontraron
+            send(client, &found, sizeof(int), 0);
 
             if (found == 0) {
                 printf("========================================\n");
                 printf("  No se encontraron coincidencias.\n");
                 printf("========================================\n");
-                close(wfd);
             } else {
                 printf("========================================\n");
                 printf("  %d canciones encontradas.\n", found);
                 printf("========================================\n");
+
                 for (int i = 0; i < found; i++) {
                     Song *s = &results[i];
 
-                    if (write(wfd, s, sizeof(Song)) == -1) {
-                        perror("Error writing FIFO_S2C");
-                        close(wfd);
-                        free(results);
-                        exit(EXIT_FAILURE);
-                    }
+                
+                    send(client, s, sizeof(Song), 0);
 
-                    // Log para ver resultados en consola del servidor
+                    // Log del servidor
                     printf("[%d] %s - %s (%d) | Views: %d\n",
                            i + 1, s->titulo, s->artist, s->year, s->views);
                 }
-                close(wfd);
             }
         }
 
+        // --- Acción de agregar canción ---
         else if (req.action == ACTION_ADD) {
-            printf(" Solicitud de agregar canción recibida: %s - %s\n",
+            printf("Solicitud de agregar canción recibida: %s - %s\n",
                    req.data.song.titulo, req.data.song.artist);
-        
+
             int ack = perform_add_song_server(req.data.song);
-        
+
             // Enviar confirmación al cliente
-            int wfd = open(FIFO_S2C, O_WRONLY);
-            if (wfd == -1) {
-                perror("Error abriendo FIFO_S2C");
-            } else {
-                if (write(wfd, &ack, sizeof(int)) == -1) {
-                    perror("Error enviando confirmación al cliente");
-                }
-                close(wfd);
-            }
-        
+            send(client, &ack, sizeof(int), 0);
+
             if (ack)
                 printf("Canción agregada correctamente al CSV y al índice.\n");
             else
                 printf("Error al agregar la canción.\n");
         }
 
-
         free(results);
     }
 
+    close(client);
+    close(server);
+
     return 0;
 }
+
 
