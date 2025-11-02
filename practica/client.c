@@ -10,19 +10,19 @@ void clear_screen() {
 #else
     int res = system("clear");
 #endif
-    (void)res; // Evita el warning de valor no usado
+    (void)res;
 }
 
 void pause_execution() {
     printf("\nPresione ENTER para continuar...");
     int c = getchar();
-    (void)c; // Ignoramos el valor de retorno
+    (void)c;
 }
 
 void get_string_input(char *buffer, size_t size, const char *prompt) {
     printf("%s", prompt);
     if (fgets(buffer, size, stdin) == NULL) {
-        buffer[0] = '\0'; // Si ocurre error, dejamos la cadena vacía
+        buffer[0] = '\0';
     }
     buffer[strcspn(buffer, "\n")] = '\0';
 }
@@ -43,15 +43,38 @@ void print_menu() {
 void print_song(const Song *song, int index) {
     printf("\n[%d] %s - %s\n", index, song->titulo, song->artist);
     printf("   Año: %d | Vistas: %d\n", song->year, song->views);
-    printf("   Tag: %s | Idioma: %s\n",
-           song->tag, song->language);
-    //printf("   Features: %s\n", song->features);
-    //printf("   ID: %d\n", song->id);
+    printf("   Tag: %s | Idioma: %s\n", song->tag, song->language);
 }
 
 // ====================================================
-// Comunicación con el servidor
+// Comunicación con el servidor (SOCKETS TCP)
 // ====================================================
+
+int connect_to_server() {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == -1) {
+        perror("Error creando el socket");
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(SERVER_PORT);
+
+    if (inet_pton(AF_INET, SERVER_IP, &server_addr.sin_addr) <= 0) {
+        perror("Dirección IP inválida");
+        close(sock);
+        exit(EXIT_FAILURE);
+    }
+
+    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("No se pudo conectar con el servidor");
+        close(sock);
+        exit(EXIT_FAILURE);
+    }
+
+    return sock;
+}
 
 void perform_search(SearchCriteria *criteria) {
     if (strlen(criteria->titulo) == 0) {
@@ -60,60 +83,49 @@ void perform_search(SearchCriteria *criteria) {
         return;
     }
 
+    int sock = connect_to_server();
+
     RequestMessage req;
     memset(&req, 0, sizeof(req));
     req.action = ACTION_SEARCH;
     req.data.search = *criteria;
 
-    int wfd = open(FIFO_C2S, O_WRONLY);
-    if (wfd == -1) {
-        perror("Error abriendo FIFO_C2S");
-        return;
-    }
-
-    if (write(wfd, &req, sizeof(RequestMessage)) == -1) {
+    if (send(sock, &req, sizeof(req), 0) == -1) {
         perror("Error enviando datos al servidor");
-        close(wfd);
-        return;
-    }
-    close(wfd);
-
-    int rfd = open(FIFO_S2C, O_RDONLY);
-    if (rfd == -1) {
-        perror("Error abriendo FIFO_S2C");
+        close(sock);
         return;
     }
 
     int found = 0;
-    if (read(rfd, &found, sizeof(int)) == -1) {
-        perror("Error leyendo cantidad de resultados");
-        close(rfd);
+    if (recv(sock, &found, sizeof(int), 0) <= 0) {
+        perror("Error recibiendo cantidad de resultados");
+        close(sock);
         return;
     }
 
     if (found == 0) {
         printf("\nNo se encontraron canciones con esos criterios.\n");
-        close(rfd);
+        close(sock);
         pause_execution();
         return;
     }
 
     Song *results = malloc(found * sizeof(Song));
     if (!results) {
-        perror("Error asignando memoria para resultados");
-        close(rfd);
+        perror("Error asignando memoria");
+        close(sock);
         return;
     }
 
     for (int i = 0; i < found; i++) {
-        if (read(rfd, &results[i], sizeof(Song)) == -1) {
-            perror("Error leyendo resultados");
+        if (recv(sock, &results[i], sizeof(Song), 0) <= 0) {
+            perror("Error recibiendo resultados");
             free(results);
-            close(rfd);
+            close(sock);
             return;
         }
     }
-    close(rfd);
+    close(sock);
 
     printf("\n========================================\n");
     printf("     %d CANCIONES ENCONTRADAS 🎶\n", found);
@@ -141,37 +153,27 @@ void perform_add_song() {
     s.views = atoi(temp);
     get_string_input(s.language, sizeof(s.language), "Ingrese el idioma (opcional): ");
 
+    int sock = connect_to_server();
+
     RequestMessage req;
     memset(&req, 0, sizeof(req));
     req.action = ACTION_ADD;
     req.data.song = s;
 
-    int wfd = open(FIFO_C2S, O_WRONLY);
-    if (wfd == -1) {
-        perror("Error abriendo FIFO_C2S");
-        return;
-    }
-
-    if (write(wfd, &req, sizeof(RequestMessage)) == -1) {
+    if (send(sock, &req, sizeof(req), 0) == -1) {
         perror("Error enviando datos al servidor");
-        close(wfd);
-        return;
-    }
-    close(wfd);
-
-    int rfd = open(FIFO_S2C, O_RDONLY);
-    if (rfd == -1) {
-        perror("Error abriendo FIFO_S2C");
+        close(sock);
         return;
     }
 
     int ack = 0;
-    if (read(rfd, &ack, sizeof(int)) == -1) {
-        perror("Error leyendo confirmación");
-        close(rfd);
+    if (recv(sock, &ack, sizeof(int), 0) <= 0) {
+        perror("Error recibiendo confirmación");
+        close(sock);
         return;
     }
-    close(rfd);
+
+    close(sock);
 
     if (ack == 1)
         printf("\n✅ Canción agregada correctamente.\n");
@@ -201,7 +203,7 @@ int main() {
         print_menu();
 
         if (fgets(option, sizeof(option), stdin) == NULL) {
-            continue; // Si ocurre error, reinicia el ciclo
+            continue;
         }
 
         int choice = atoi(option);
