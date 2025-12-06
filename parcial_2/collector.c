@@ -56,28 +56,41 @@ void *handle_machine(void *arg) {
         float a, b, c, d;
 
         pthread_mutex_lock(&lock);
-
-        /* ------------ CPU ------------ */
-        if (sscanf(buffer, "CPU;%31[^;];%f;%f;%f;%f", ip, &a, &b, &c, &d) == 5) {
-            int idx = find_or_create_host(ip);
-            if (idx >= 0) {
-                hosts[idx].cpu_usage  = a;
-                hosts[idx].cpu_user   = b;
-                hosts[idx].cpu_system = c;
-                hosts[idx].cpu_idle   = d;
+        
+        char *line = strtok(buffer, "\n");
+        while (line) {
+            char ip[32];
+            float a, b, c, d;
+        
+            /* ---- CPU ---- */
+            if (strncmp(line, "CPU;", 4) == 0) {
+                if (sscanf(line, "CPU;%31[^;];%f;%f;%f;%f", ip, &a, &b, &c, &d) == 5) {
+                    int idx = find_or_create_host(ip);
+                    if (idx >= 0) {
+                        hosts[idx].cpu_usage  = a;
+                        hosts[idx].cpu_user   = b;
+                        hosts[idx].cpu_system = c;
+                        hosts[idx].cpu_idle   = d;
+                    }
+                }
             }
-        }
-        /* ------------ MEM ------------ */
-        else if (sscanf(buffer, "MEM;%31[^;];%f;%f;%f;%f", ip, &a, &b, &c, &d) == 5) {
-            int idx = find_or_create_host(ip);
-            if (idx >= 0) {
-                hosts[idx].mem_used_mb   = a;
-                hosts[idx].mem_free_mb   = b;
-                hosts[idx].swap_total_mb = c;
-                hosts[idx].swap_free_mb  = d;
+        
+            /* ---- MEM ---- */
+            else if (strncmp(line, "MEM;", 4) == 0) {
+                if (sscanf(line, "MEM;%31[^;];%f;%f;%f;%f", ip, &a, &b, &c, &d) == 5) {
+                    int idx = find_or_create_host(ip);
+                    if (idx >= 0) {
+                        hosts[idx].mem_used_mb   = a;
+                        hosts[idx].mem_free_mb   = b;
+                        hosts[idx].swap_total_mb = c;
+                        hosts[idx].swap_free_mb  = d;
+                    }
+                }
             }
+        
+            line = strtok(NULL, "\n");
         }
-
+        
         pthread_mutex_unlock(&lock);
 
         printf("[RECV] %s", buffer);
@@ -128,3 +141,4 @@ int main() {
     close(server_fd);
     return 0;
 }
+
