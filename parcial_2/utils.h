@@ -13,6 +13,7 @@ struct host_info {
     float mem_free_mb;
     float swap_total_mb;
     float swap_free_mb;
+   // size_t counter;
 } host_info;
 
 #endif

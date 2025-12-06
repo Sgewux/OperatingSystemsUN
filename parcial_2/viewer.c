@@ -11,6 +11,8 @@
 int main() {
     int shmid;
     struct host_info *shm_hosts;
+    size_t prev_counters[MAX_HOSTS];
+    for(int i = 0; i<MAX_HOSTS; i++) prev_counters[i] = 0;
 
     /* ===== Conectarse a memoria compartida ===== */
     shmid = shmget(0x1234, sizeof(struct host_info) * MAX_HOSTS, 0666);
@@ -34,6 +36,8 @@ int main() {
         for (int i = 0; i < MAX_HOSTS; i++) {
             if (shm_hosts[i].ip[0] == '\0')
                 continue;  // slot vacío
+            if(shm_hosts[i].counter == prev_counters[i])
+                continue; // no new data
 
             printf("Host %d (%s)\n", i, shm_hosts[i].ip);
             printf("  CPU Usage:   %.2f%%\n", shm_hosts[i].cpu_usage);
@@ -47,7 +51,6 @@ int main() {
             printf("---------------------------------------------------\n");
         }
 
-        sleep(1);
     }
 
     return 0;

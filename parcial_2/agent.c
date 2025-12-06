@@ -3,8 +3,9 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <string.h>
+#include <stdlib.h>
 
-void appendMem(char* buffer, size_t size) {
+void appendMem(char* buffer, size_t size, const char* logical_ip) {
     FILE *f = fopen("/proc/meminfo", "r");
     if (!f) {
         perror("fopen");
@@ -24,7 +25,6 @@ void appendMem(char* buffer, size_t size) {
 
     fclose(f);
 
-    const char* ip_logica = "0.0.0.0"; // Placeholder
 
     float mem_used_mb  = (mem_total_kb - mem_available_kb) / 1024.0f;
     float mem_free_mb  = mem_free_kb / 1024.0f;
@@ -34,7 +34,7 @@ void appendMem(char* buffer, size_t size) {
     int len = strlen(buffer);
     snprintf(buffer + len, size - len,
              "MEM;%s;%.2f;%.2f;%.2f;%.2f\n",
-             ip_logica,
+             logical_ip,
              mem_used_mb,
              mem_free_mb,
              swap_total_mb,
@@ -42,7 +42,7 @@ void appendMem(char* buffer, size_t size) {
 }
 
 
-void appendCPU(char* buffer, size_t size) {
+void appendCPU(char* buffer, size_t size, const char* logical_ip) {
     FILE *f = fopen("/proc/stat", "r");
     if (!f) {
         perror("fopen");
@@ -72,22 +72,29 @@ void appendCPU(char* buffer, size_t size) {
     float system_pct = 100.0f * system / CPU_total;
     float idle_pct  = 100.0f * idle  / CPU_total;
 
-    const char* ip_logica = "0.0.0.0"; // Placeholder
 
     int len = strlen(buffer);
     snprintf(buffer + len, size - len,
              "CPU;%s;%.2f;%.2f;%.2f;%.2f\n",
-             ip_logica,
+             logical_ip,
              CPU_usage,
              user_pct,
              system_pct,
              idle_pct);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+
+    if(argc != 4){
+        printf("Please insert the 3 required arguments.");
+        return 1;
+    }
+
     char buffer[512];
-    const char* server_ip = "127.0.0.1"; // Update your server IP
-    int server_port = DEFAULT_PORT;
+    const char* server_ip = argv[1];
+    int server_port = atoi(argv[2]);
+    const char* logical_agent_ip = argv[3];
+ 
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
@@ -115,8 +122,8 @@ int main() {
 
     while (1) {
         buffer[0] = '\0';
-        appendCPU(buffer, sizeof(buffer));
-        appendMem(buffer, sizeof(buffer));
+        appendCPU(buffer, sizeof(buffer), logical_agent_ip);
+        appendMem(buffer, sizeof(buffer), logical_agent_ip);
 
         printf("Sending:\n%s", buffer);
 
