@@ -1,7 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-struct host_info {
+typedef struct {
     char ip[32];
     float cpu_usage;
     float cpu_user;
@@ -11,6 +11,6 @@ struct host_info {
     float mem_free_mb;
     float swap_total_mb;
     float swap_free_mb;
-};
+} host_info;
 
 #endif
