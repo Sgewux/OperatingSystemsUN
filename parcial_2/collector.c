@@ -37,7 +37,7 @@ int find_or_create_host(const char *ip) {
     for (int i = 0; i < MAX_HOSTS; i++) {
         if (hosts[i].ip[0] == '\0') {
             strncpy(hosts[i].ip, ip, 31);
-          //  hosts[i].counter = 0;
+            hosts[i].counter = 0;
             return i;
         }
     }
@@ -88,7 +88,7 @@ void *handle_machine(void *arg) {
                         hosts[idx].swap_total_mb = c;
                         hosts[idx].swap_free_mb  = d;
                         
-                       // hosts[idx].counter++;
+                       hosts[idx].counter++;
                     }
                 }
             }

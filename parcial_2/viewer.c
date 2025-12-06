@@ -15,7 +15,7 @@ int main() {
     for(int i = 0; i<MAX_HOSTS; i++) prev_counters[i] = 0;
 
     /* ===== Conectarse a memoria compartida ===== */
-    shmid = shmget(0x1234, sizeof(struct host_info) * MAX_HOSTS, 0666);
+    shmid = shmget(0x1234, sizeof(struct host_info) * MAX_HOSTS, IPC_CREAT | 0666);
     if (shmid < 0) {
         perror("shmget");
         exit(1);
@@ -31,26 +31,33 @@ int main() {
 
     /* ===== Loop principal ===== */
     while (1) {
+        system("clear");
         printf("\n====================== VIEWER ======================\n");
 
         for (int i = 0; i < MAX_HOSTS; i++) {
             if (shm_hosts[i].ip[0] == '\0')
                 continue;  // slot vacío
-            if(shm_hosts[i].counter == prev_counters[i])
-                continue; // no new data
-
-            printf("Host %d (%s)\n", i, shm_hosts[i].ip);
-            printf("  CPU Usage:   %.2f%%\n", shm_hosts[i].cpu_usage);
-            printf("  CPU User:    %.2f%%\n", shm_hosts[i].cpu_user);
-            printf("  CPU System:  %.2f%%\n", shm_hosts[i].cpu_system);
-            printf("  CPU Idle:    %.2f%%\n", shm_hosts[i].cpu_idle);
-            printf("  Mem Used:    %.2f MB\n", shm_hosts[i].mem_used_mb);
-            printf("  Mem Free:    %.2f MB\n", shm_hosts[i].mem_free_mb);
-            printf("  Swap Total:  %.2f MB\n", shm_hosts[i].swap_total_mb);
-            printf("  Swap Free:   %.2f MB\n", shm_hosts[i].swap_free_mb);
-            printf("---------------------------------------------------\n");
+            if(shm_hosts[i].counter == prev_counters[i]){
+                printf("Host %d (%s)\n", i, shm_hosts[i].ip);
+                printf("  No new data\n");
+                printf("---------------------------------------------------\n");
+            } else {
+                prev_counters[i] = shm_hosts[i].counter;
+                printf("Host %d (%s)\n", i, shm_hosts[i].ip);
+                printf("  CPU Usage:   %.2f%%\n", shm_hosts[i].cpu_usage);
+                printf("  CPU User:    %.2f%%\n", shm_hosts[i].cpu_user);
+                printf("  CPU System:  %.2f%%\n", shm_hosts[i].cpu_system);
+                printf("  CPU Idle:    %.2f%%\n", shm_hosts[i].cpu_idle);
+                printf("  Mem Used:    %.2f MB\n", shm_hosts[i].mem_used_mb);
+                printf("  Mem Free:    %.2f MB\n", shm_hosts[i].mem_free_mb);
+                printf("  Swap Total:  %.2f MB\n", shm_hosts[i].swap_total_mb);
+                printf("  Swap Free:   %.2f MB\n", shm_hosts[i].swap_free_mb);
+                printf("---------------------------------------------------\n");
+            }
+                
         }
 
+        sleep(1);
     }
 
     return 0;
