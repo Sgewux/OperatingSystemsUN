@@ -15,6 +15,11 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include "utils.h"
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
+int shmid;
+struct host_info *shm_hosts;
 
 #define MAX_HOSTS 4
 
@@ -52,9 +57,6 @@ void *handle_machine(void *arg) {
         if (n <= 0) break;
         buffer[n] = '\0';
 
-        char ip[32];
-        float a, b, c, d;
-
         pthread_mutex_lock(&lock);
         
         char *line = strtok(buffer, "\n");
@@ -90,6 +92,9 @@ void *handle_machine(void *arg) {
         
             line = strtok(NULL, "\n");
         }
+
+        /* Copiar tabla completa hacia el segmento compartido */
+        memcpy(shm_hosts, hosts, sizeof(struct host_info) * MAX_HOSTS);
         
         pthread_mutex_unlock(&lock);
 
@@ -109,6 +114,17 @@ int main() {
     socklen_t c = sizeof(client);
 
     memset(hosts, 0, sizeof(hosts));
+
+    // ===== Crear memoria compartida =====
+    shmid = shmget(0x1234, sizeof(struct host_info) * MAX_HOSTS, IPC_CREAT | 0666);
+    if (shmid < 0) { perror("shmget"); exit(1); }
+
+    shm_hosts = (struct host_info *)shmat(shmid, NULL, 0);
+    if (shm_hosts == (void *)-1) { perror("shmat"); exit(1); }
+
+    memset(shm_hosts, 0, sizeof(struct host_info) * MAX_HOSTS);
+
+    printf("[Collector] Memoria compartida creada y mapeada.\n");
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) { perror("socket"); return 1; }
@@ -141,4 +157,3 @@ int main() {
     close(server_fd);
     return 0;
 }
-
