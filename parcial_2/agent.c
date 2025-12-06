@@ -8,7 +8,7 @@
  * ========================================================= */
 
 /***************************************************
- *                  agent_cpu.c
+ *                  agent_cpu
  ***************************************************/
 
 #include <stdio.h>
@@ -65,14 +65,8 @@ int run_agent_cpu(const char *collector_ip, int port, const char *logical_ip) {
 
 
 /***************************************************
- *                  agent_mem.c
+ *                  agent_mem
  ***************************************************/
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
 
 // Lee /proc/meminfo
 int run_agent_mem(const char *collector_ip, int port, const char *logical_ip) {
@@ -132,3 +126,4 @@ int run_agent_mem(const char *collector_ip, int port, const char *logical_ip) {
  *   agente/agent_mem.c
  * Aquí se incluye todo junto solo por conveniencia del canvas.
  ***************************************************/
+
