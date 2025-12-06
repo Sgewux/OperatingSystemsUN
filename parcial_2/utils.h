@@ -1,6 +1,8 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#define DEFAULT_PORT 9000 
+
 struct host_info {
     char ip[32];
     float cpu_usage;
