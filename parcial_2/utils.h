@@ -2,6 +2,7 @@
 #define UTILS_H
 
 #define DEFAULT_PORT 9000 
+#include <stddef.h>
 
 struct host_info {
     char ip[32];
